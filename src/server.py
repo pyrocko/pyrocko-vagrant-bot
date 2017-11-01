@@ -58,22 +58,27 @@ class WebhookServer(server.HTTPServer):
                 server_side=True)
 
 
-class VagrantCommand(object):
+class MattermostCommand(object):
     def __init__(self, payload):
         for k, v in urllib.parse.parse_qs(payload).items():
             self.__setattr__(k.decode(), v[0].decode())
 
+    def __str__(self):
+        return str(self.__dict__)
+
+
+class MattermostResponse(object):
+    def __init__(self, text='', response_type='in_channel'):
+        self.response_type = response_type
+        self.text = text
+
+    def get_payload(self):
+        d = self.__dict__
+        return str.encode(json.dumps(d))
+
 
 class VagrantWebhook(server.SimpleHTTPRequestHandler):
     server_version = 'pyrocko-vagrant-webhook/0.1'
-
-    @staticmethod
-    def prepare_message(message):
-        resp = {
-            'response_type': 'in_channel',
-            'text': message,
-        }
-        return str.encode(json.dumps(resp))
 
     def do_GET(self):
         # self.send_error(501, 'Not Implemented')
@@ -88,21 +93,21 @@ class VagrantWebhook(server.SimpleHTTPRequestHandler):
         self.send_error(501, 'Not Implemented')
 
     def do_POST(self):
+        resp = MattermostResponse()
         content_length = int(self.headers['Content-length'])
         if content_length > 512:
             self.send_response(400, 'Bad Request')
             return
 
         try:
-            command = VagrantCommand(self.rfile.read(content_length))
-            self.commander(command)
+            command = MattermostCommand(self.rfile.read(content_length))
+            resp = self.commander(command, resp)
         except Exception as e:
             print(e)
             self.send_response(400, 'Bad Request')
             return
 
-        self.commander(command)
-        resp = self.prepare_message(self.commander.get_response())
+        resp = resp.get_payload()
         self.send_response(200, 'OK')
         self.send_header('Content-type', 'application/json')
         self.send_header('Content-length', len(resp))

@@ -47,7 +47,7 @@ def send_request(config_file):
         'response_url=not+supported+yet',
         'team_domain=someteam',
         'team_id=rdc9bgriktyx9p4kowh3dmgqyc',
-        'text=list',
+        'text=help',
         'token=xr3j5x3p4pfk7kk6ck7b4e6ghh',
         'user_id=c3a4cqe3dfy6dgopqt8ai3hydh',
         'user_name=somename',
