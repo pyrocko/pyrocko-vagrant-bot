@@ -73,18 +73,18 @@ class VagrantMachine(object):
             m = re.search(r'/test-(.*)\.py([23])\.out$', fn)
             branch = m.group(1)
             py_version = m.group(2)
-            rstr += '   python: %s\n' % py_version
-            rstr += '   branch: %s\n' % branch
+            rstr += 'python: %s\n' % py_version
+            rstr += 'branch: %s\n' % branch
 
             txt = f.read()
 
             m = re.search(r'---+\nTOTAL +(.+)\n---+', txt)
             if m:
-                rstr += '      coverage: %s\n' % m.group(1)
+                rstr += 'coverage: %s\n' % m.group(1)
 
             m = re.search(r'^((OK|FAILED)( +\([^\)]+\))?)', txt, re.M)
             if m:
-                rstr += '      tests: %s\n' % m.group(1)
+                rstr += 'tests: %s\n' % m.group(1)
 
             if show_skips:
                 count = {}
@@ -95,13 +95,13 @@ class VagrantMachine(object):
                         count[x] += 1
 
                 for x in sorted(count.keys()):
-                    rstr += '         skip: %s (%ix)\n' % (x, count[x])
+                    rstr += '   skip: %s (%ix)\n' % (x, count[x])
 
             for x in re.findall(r'^ERROR: .*$', txt, re.M):
-                rstr += '         %s\n' % x
+                rstr += '   %s\n' % x
 
             for x in re.findall(r'^FAIL: .*$', txt, re.M):
-                rstr += '         %s\n' % x
+                rstr += '   %s\n' % x
         return rstr
 
     def status(self, path):
@@ -169,7 +169,7 @@ class VagrantCommander(object):
 
     @register_command(r'run|start')
     def run_machine(self, event, resp):
-        ''' Start Vagrant machines, space seperated or `all`'''
+        ''' Start Vagrant machines; space seperated or `all`'''
         for m in self._get_machines_from_text(event.text, resp):
             m.run()
             resp.text += '%s started!\n' % m.name_quoted
@@ -177,7 +177,7 @@ class VagrantCommander(object):
 
     @register_command(r'inspect')
     def inspect_machine(self, event, resp):
-        ''' Inspect machine's stdout and stderr, space seperated or `all` '''
+        ''' Inspect machine's stdout and stderr; space seperated or `all` '''
         for m in self._get_machines_from_text(event.text, resp):
             resp.text += 'Inspection of %s\n' % m.name_quoted
             resp.text += '*STDOUT*\n```\n%s\n```\n' % m.stdout.getvalue()
@@ -185,9 +185,10 @@ class VagrantCommander(object):
 
     @register_command(r'log|status')
     def show_log(self, event, resp):
-        ''' Show logs for deployments, space seperated or `all` '''
+        ''' Show logs for deployments; space seperated or `all` '''
         for m in self._get_machines_from_text(event.text, resp):
-            resp.text += 'Showing log for %s:\n' % m.name_quoted
+            resp.text += 'Showing logs'
+            resp.text += '## Machine %s:\n' % m.name_quoted
             resp.text += m.get_log()
 
     def _get_machines_from_text(self, text, resp):
