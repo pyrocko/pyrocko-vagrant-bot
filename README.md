@@ -1,4 +1,4 @@
-# pyrocko-vagrant-webhook
+# pyrocko-vagrant-bot
 
 
 ## Installation
