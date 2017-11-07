@@ -22,9 +22,9 @@ class WebhookServerConfig(guts.Object):
     ssl_certificate = guts.String.T(
         help='SSL Certificate',
         default='None')
-    repository_path = guts.String.T(
-        help='Path of the repository',
-        default='~/Development/pyrocko')
+    repo_url = guts.String.T(
+        help='URL of the repository',
+        default='https://github.com/pyrocko/pyrocko')
 
     def get_server(self):
         server = WebhookServer
@@ -38,7 +38,7 @@ class WebhookServerConfig(guts.Object):
     def get_handler(self):
         webhook = VagrantWebhook
         webhook.commander = VagrantCommander(
-            path=self.repository_path)
+            repo_url=self.repo_url)
         return VagrantWebhook
 
 

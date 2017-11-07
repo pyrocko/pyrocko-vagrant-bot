@@ -19,7 +19,7 @@ payload = '&'.join(
 
 
 def test_commands():
-    for cmd in ['help', 'list', 'log', 'run ubuntu-14.4', 'inspect']:
+    for cmd in ['help', 'machines', 'log', 'run ubuntu-14.4 #master', 'inspect']:
         resp = MattermostResponse()
         MC = MattermostCommand((payload % cmd).encode('ascii'))
         commander(MC, resp)

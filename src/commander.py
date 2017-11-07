@@ -3,6 +3,7 @@ import re
 import io
 import os
 import glob
+import git
 import os.path as op
 import logging
 
@@ -20,21 +21,25 @@ class VagrantMachine(object):
         def __init__(self, name, executeable):
             threading.Thread.__init__(self)
             self.name = name
+            self.branch = 'master'
             self.executeable = executeable
             self.path = op.dirname(executeable)
-            self.process = None
 
-            self.stdout = io.StringIO()
-            self.stderr = io.StringIO()
+            self.process = None
+            self.stdout = io.BytesIO()
+            self.stderr = io.BytesIO()
 
         def run(self):
             self.process = subprocess.Popen(
-                [self.executeable],
+                [self.executeable, self.branch],
                 cwd=self.path,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE)
             self.stdout.write(self.process.stdout.read())
             self.stderr.write(self.process.stderr.read())
+
+        def set_branch(self, branch):
+            self.branch = branch
 
         def isfinished(self):
             if self.process is None:
@@ -107,8 +112,10 @@ class VagrantMachine(object):
     def status(self, path):
         pass
 
-    def run(self):
-        logger.info('Starting Vagrant machine %s...' % self.name)
+    def run(self, branch):
+        logger.info('Starting branch %s on Vagrant machine %s...'
+                    % (branch, self.name))
+        self.thread.set_branch(branch)
         self.thread.start()
 
     def stop(self):
@@ -122,14 +129,12 @@ class VagrantMachine(object):
     def status_str(self):
         return ':running_man: running' if self.is_running else 'stopped'
 
-    @property
-    def name_quoted(self):
-        return '`%s`' % self.name
-
 
 def register_command(command):
     def register(func):
         HANDLERS[command] = func
+        if func.__doc__ is None:
+            func.__doc__ = 'Handler not documented.'
         return func
     return register
 
@@ -137,8 +142,14 @@ def register_command(command):
 class VagrantCommander(object):
     HANDLERS = HANDLERS
 
-    def __init__(self, path):
-        self.path = path
+    def __init__(self, repo_url):
+        self.repo_url = repo_url
+        self.path = op.join(os.getcwd(), op.basename(repo_url))
+        if not op.exists(self.path):
+            os.makedirs(self.path)
+
+        self.git = None
+        self.init_git()
 
         self.machines = []
         self.scan_machines()
@@ -149,49 +160,68 @@ class VagrantCommander(object):
             if match.findall(event.text):
                 hdl(self, event, resp)
                 return resp
-        self.response = 'Unknown command _%s_' % event.text
+        resp.text = 'Unknown command _%s_' % event.text
         return resp
 
-    @register_command(r'commands|help')
+    def init_git(self):
+        try:
+            self.git = git.Repo(self.path)
+        except git.InvalidGitRepositoryError:
+            logger.info('Cloning repository %s...' % self.repo_url)
+            self.git = git.Repo.clone_from(self.repo_url, self.path)
+
+    def checkout_pull_branch(self, branch_name):
+        if self.git.active_branch.name != branch_name:
+            for head in self.git.heads:
+                if head.name == branch_name:
+                    head.checkout()
+        self.git.remote().pull()
+
+    @register_command(r'help')
     def show_help(self, event, resp):
         ''' Show this help '''
         resp.text = 'Vagrant Bot commands:\n'
         resp.text += '\n'.join(['* `%s` %s' % (ptn, f.__doc__.strip())
                                 for ptn, f in HANDLERS.items()])
 
-    @register_command(r'list|machines')
+    @register_command(r'machines')
     def show_machines(self, event, resp):
         ''' Lists all available machines and corresponding status '''
         resp.text = 'Available Machines:\n'
-        resp.text += '\n'.join(['* %s %s'
-                                % (m.name_quoted, m.status_str)
+        resp.text += '\n'.join(['* `%s` %s'
+                                % (m.name, m.status_str)
                                 for m in self.machines])
 
-    @register_command(r'run|start')
+    @register_command(r'run')
     def run_machine(self, event, resp):
-        ''' Start Vagrant machines; space seperated or `all`'''
-        for m in self._get_machines_from_text(event.text, resp):
-            m.run()
-            resp.text += '%s started!\n' % m.name_quoted
+        ''' Start Vagrant machines for #<branch>; list of machines or `all` '''
+        branch = self._strip_branch_name(event, resp)
+        resp.text += ':running_man: Running pyrocko on branch `%s`\n' % branch
+        self.checkout_pull_branch(branch)
+
+        for m in self._get_machines_from_text(event, resp):
+            m.run(branch)
+            resp.text += '* `%s` started!\n' % m.name
         resp.text = resp.text[:-2]
 
     @register_command(r'inspect')
     def inspect_machine(self, event, resp):
-        ''' Inspect machine's stdout and stderr; space seperated or `all` '''
-        for m in self._get_machines_from_text(event.text, resp):
-            resp.text += 'Inspection of %s\n' % m.name_quoted
+        ''' Inspect machine's stdout and stderr; list of machines or `all` '''
+        for m in self._get_machines_from_text(event, resp):
+            resp.text += 'Inspection of `%s`\n' % m.name
             resp.text += '*STDOUT*\n```\n%s\n```\n' % m.stdout.getvalue()
             resp.text += '*STDERR*\n```\n%s\n```\n' % m.stderr.getvalue()
 
-    @register_command(r'log|status')
+    @register_command(r'log')
     def show_log(self, event, resp):
-        ''' Show logs for deployments; space seperated or `all` '''
-        for m in self._get_machines_from_text(event.text, resp):
+        ''' Show logs for deployments; list of machines or `all` '''
+        for m in self._get_machines_from_text(event, resp):
             resp.text += 'Showing logs'
-            resp.text += '## Machine %s:\n' % m.name_quoted
+            resp.text += '## Machine `%s`:\n' % m.name
             resp.text += m.get_log()
 
-    def _get_machines_from_text(self, text, resp):
+    def _get_machines_from_text(self, event, resp):
+        text = event.text
         machines = []
         patterns = [m.lower() for m in text.split()[1:]]
         if not patterns:
@@ -201,6 +231,16 @@ class VagrantCommander(object):
                 machines.append(m)
 
         return machines
+
+    def _strip_branch_name(self, event, resp):
+        r = re.compile(r'\s#([a-zA-Z0-9_-]*)')
+        branch = r.findall(event.text)
+        if not branch or len(branch) > 1:
+            branch = 'master'
+        else:
+            branch = branch[0]
+            event.text = r.sub('', event.text)
+        return branch
 
     def scan_machines(self):
         path = op.join(self.path, 'maintenance', 'vagrant')
